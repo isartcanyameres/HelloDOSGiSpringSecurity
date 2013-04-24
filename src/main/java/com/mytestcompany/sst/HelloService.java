@@ -2,9 +2,12 @@ package com.mytestcompany.sst;
 
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
+import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.MediaType;
+
+import com.mytestcompany.sst.model.Resource;
 
 @Path("/")
 public interface HelloService {
@@ -18,4 +21,15 @@ public interface HelloService {
 	@GET
 	@Produces(MediaType.APPLICATION_XML)
 	public String sayBye(@QueryParam("name") String name);
+
+	@Path("/generateResources")
+	@GET
+	@Produces(MediaType.APPLICATION_XML)
+	public ListWrapper<Long> generateResources();
+
+	@Path("/getResource/{id}")
+	@GET
+	@Produces(MediaType.APPLICATION_XML)
+	public Resource getResource(@PathParam("id") Long id);
+
 }
