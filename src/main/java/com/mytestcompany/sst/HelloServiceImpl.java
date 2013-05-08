@@ -28,12 +28,7 @@ public class HelloServiceImpl implements HelloService {
 	@Override
 	public ListWrapper<Long> generateResources() {
 		resources = doGenerateResources();
-		List<Long> ids = new ArrayList<Long>(resources.size());
-		for (Resource r : resources) {
-			ids.add(r.getId());
-		}
-
-		return new ListWrapper<Long>(ids);
+		return listResources();
 	}
 
 	@Override
@@ -43,6 +38,15 @@ public class HelloServiceImpl implements HelloService {
 				return r;
 		}
 		return null;
+	}
+
+	@Override
+	public ListWrapper<Long> listResources() {
+		List<Long> ids = new ArrayList<Long>(resources.size());
+		for (Resource r : resources) {
+			ids.add(r.getId());
+		}
+		return new ListWrapper<Long>(ids);
 	}
 
 	private List<Resource> doGenerateResources() {
@@ -60,4 +64,5 @@ public class HelloServiceImpl implements HelloService {
 		}
 		return resources;
 	}
+
 }

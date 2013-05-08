@@ -1,0 +1,316 @@
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:jdbc="http://www.springframework.org/schema/jdbc" 
+	xmlns:security="http://www.springframework.org/schema/security"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+	xmlns:osgi="http://www.springframework.org/schema/osgi"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans 
+					http://www.springframework.org/schema/beans/spring-beans-3.0.xsd
+					http://www.springframework.org/schema/jdbc
+					http://www.springframework.org/schema/jdbc/spring-jdbc-3.0.xsd
+                    http://www.springframework.org/schema/security
+                    http://www.springframework.org/schema/security/spring-security-3.0.xsd
+                    http://www.springframework.org/schema/osgi
+                    http://www.springframework.org/schema/osgi/spring-osgi.xsd
+                    ">
+
+	<!-- Spring Security Context -->
+	<!-- from https://josh.media.berkeley.edu/?p=61 -->
+	<bean id="mySecurityFilterChain" class="org.springframework.security.web.FilterChainProxy">
+		<security:filter-chain-map path-type="ant">
+			<security:filter-chain pattern="/**"
+				filters="securityContextPersistenceFilterWithASCFalse,
+				basicAuthenticationFilter,
+				exceptionTranslationFilter,
+				filterSecurityInterceptor" />
+		</security:filter-chain-map>
+	</bean>
+
+	<!-- Publish the chain as a single Filter in the OSGi service registry, 
+		for DOSGi to register it: See https://cxf.apache.org/distributed-osgi-reference.html#DistributedOSGiReference-ConfigurationProperties -->
+	<osgi:service id="mySecurityFilterChainOsgi" ref="mySecurityFilterChain"
+		interface="javax.servlet.Filter">
+		<osgi:service-properties>
+			<entry key="org.apache.cxf.httpservice.filter" value="true" />
+			<!-- Pax web will pick up this filter, and will complain if no servletNames 
+				or urlPatterns are specified -->
+			<entry key="servletNames" value="none" />
+		</osgi:service-properties>
+	</osgi:service>
+
+	<!-- Define filter beans -->
+
+	<bean id="securityContextPersistenceFilterWithASCFalse"
+		class="org.springframework.security.web.context.SecurityContextPersistenceFilter">
+		<property name='securityContextRepository'>
+			<bean
+				class='org.springframework.security.web.context.HttpSessionSecurityContextRepository'>
+				<property name='allowSessionCreation' value='false' />
+			</bean>
+		</property>
+	</bean>
+
+	<bean id="basicAuthenticationFilter"
+		class="org.springframework.security.web.authentication.www.BasicAuthenticationFilter">
+		<property name="authenticationManager" ref="authenticationManager" />
+		<property name="authenticationEntryPoint" ref="authenticationEntryPoint" />
+	</bean>
+	<bean id="authenticationEntryPoint"
+		class="org.springframework.security.web.authentication.www.BasicAuthenticationEntryPoint">
+		<property name="realmName" value="OpenNaaS Application" />
+	</bean>
+
+	<bean id="exceptionTranslationFilter"
+		class="org.springframework.security.web.access.ExceptionTranslationFilter">
+		<property name="authenticationEntryPoint" ref="authenticationEntryPoint" />
+	</bean>
+
+	<bean id="filterSecurityInterceptor"
+		class="org.springframework.security.web.access.intercept.FilterSecurityInterceptor">
+		<property name="authenticationManager" ref="authenticationManager" />
+		<property name="accessDecisionManager" ref="webAccessDecisionManager" />
+		<property name="securityMetadataSource">
+			<security:filter-security-metadata-source>
+				<security:intercept-url pattern="/sample/sayHello"
+					access="ROLE_ADMIN" />
+				<security:intercept-url pattern="/sample/generateResources"
+					access="ROLE_ADMIN" />
+				<!-- Require ROLE_USER in all other methods -->
+				<security:intercept-url pattern="/**" access="ROLE_USER" />
+			</security:filter-security-metadata-source>
+		</property>
+	</bean>
+
+	<security:authentication-manager alias="authenticationManager">
+		<security:authentication-provider>
+			<security:user-service id="userService">
+				<security:user name="admin" password="admin"
+					authorities="ROLE_ADMIN, ROLE_USER" />
+				<security:user name="user" password="user"
+					authorities="ROLE_USER" />
+			</security:user-service>
+		</security:authentication-provider>
+	</security:authentication-manager>
+
+	<!-- ============================================================================= -->
+	<!-- ============================= AUTHORIZATION ================================= -->
+	<!-- ============================================================================= -->
+	
+	<!-- SeeAlso bean named filterSecurityInterceptor where webAccessDecisionManager 
+		is used -->
+	<bean id="webAccessDecisionManager" class="org.springframework.security.access.vote.UnanimousBased">
+		<property name="decisionVoters">
+			<list>
+				<bean class="org.springframework.security.access.vote.RoleVoter" />
+				<bean class="org.springframework.security.access.vote.AuthenticatedVoter" />
+			</list>
+		</property>
+	</bean>
+
+	<!-- ===================== METHOD INVOCATION AUTHORIZATION ======================= -->
+
+	<!-- autowire will be applied to securityMetadataSource property, among others-->
+	<bean id="methodSecurity"
+		class="org.springframework.security.access.intercept.aopalliance.MethodSecurityInterceptor"
+		autowire="byType">
+		<property name="authenticationManager" ref="authenticationManager"/>
+		<property name="accessDecisionManager" ref="accessDecisionManager" />
+		<property name="afterInvocationManager" ref="afterInvocationManager" />
+	</bean>
+	
+	<security:global-method-security
+    pre-post-annotations="enabled" 
+    secured-annotations="disabled" 
+    jsr250-annotations="disabled" 
+   />
+
+	<!-- =================================== ACL ===================================== -->
+
+	<!-- ACL permission masks used by this application -->
+	<bean id="administrationPermission"
+		class="org.springframework.beans.factory.config.FieldRetrievingFactoryBean">
+		<property name="staticField"
+			value="org.springframework.security.acls.domain.BasePermission.ADMINISTRATION" />
+	</bean>
+	<bean id="readPermission"
+		class="org.springframework.beans.factory.config.FieldRetrievingFactoryBean">
+		<property name="staticField"
+			value="org.springframework.security.acls.domain.BasePermission.READ" />
+	</bean>
+	<bean id="writePermission"
+		class="org.springframework.beans.factory.config.FieldRetrievingFactoryBean">
+		<property name="staticField"
+			value="org.springframework.security.acls.domain.BasePermission.WRITE" />
+	</bean>
+	<bean id="deletePermission"
+		class="org.springframework.beans.factory.config.FieldRetrievingFactoryBean">
+		<property name="staticField"
+			value="org.springframework.security.acls.domain.BasePermission.DELETE" />
+	</bean>
+
+	<!-- Declare an acl service -->
+	<bean id="aclService"
+		class="org.springframework.security.acls.jdbc.JdbcMutableAclService" >
+		<constructor-arg ref="dataSource" />
+		<constructor-arg ref="lookupStrategy" />
+		<constructor-arg ref="aclCache" />
+	</bean>
+	<!-- Publish aclService in the OSGi service registry -->
+	<osgi:service id="myACLServiceOsgi" ref="aclService"
+		interface="org.springframework.security.acls.model.MutableAclService" />
+
+	<!-- Declare a lookup strategy -->
+	<bean id="lookupStrategy"
+		class="org.springframework.security.acls.jdbc.BasicLookupStrategy">
+		<constructor-arg ref="dataSource" />
+		<constructor-arg ref="aclCache" />
+		<constructor-arg ref="aclAuthorizationStrategy" />
+		<constructor-arg ref="auditLogger" />
+	</bean>
+
+	<!-- Declare a datasource -->
+	<jdbc:embedded-database id="dataSource" type="HSQL">
+		<jdbc:script location="classpath:aclschema.sql" />
+		<jdbc:script location="classpath:insert-initial-acls.sql" />
+	</jdbc:embedded-database>
+
+	<!-- Declare an acl cache -->
+	<bean id="aclCache"
+		class="org.springframework.security.acls.domain.EhCacheBasedAclCache">
+		<constructor-arg>
+			<bean class="org.springframework.cache.ehcache.EhCacheFactoryBean">
+				<property name="cacheManager">
+					<bean class="org.springframework.cache.ehcache.EhCacheManagerFactoryBean">
+						<property name="configLocation" value="/META-INF/ehcache-failsafe.xml"/>
+					</bean>
+				</property>
+				<property name="cacheName" value="aclCache" />
+			</bean>
+		</constructor-arg>
+	</bean>
+
+	<!-- Declare an acl authorization strategy -->
+	<bean id="aclAuthorizationStrategy"
+		class="org.springframework.security.acls.domain.AclAuthorizationStrategyImpl">
+		<!-- 
+		From org.springframework.security.acls.domain.AclAuthorizationStrategyImpl javadoc:
+		The only mandatory parameter relates to the system-wide GrantedAuthority instances that
+     	can be held to always permit ACL changes.
+		params: auths an array of <code>GrantedAuthority</code>s that have
+      	special permissions (index 0 is the authority needed to change
+      	ownership, index 1 is the authority needed to modify auditing details,
+      	index 2 is the authority needed to change other ACL and ACE details) (required)
+		-->
+		<constructor-arg>
+			<list>
+				<bean
+					class="org.springframework.security.core.authority.GrantedAuthorityImpl">
+					<constructor-arg value="ROLE_ADMIN" />
+				</bean>
+				<bean
+					class="org.springframework.security.core.authority.GrantedAuthorityImpl">
+					<constructor-arg value="ROLE_ADMIN" />
+				</bean>
+				<bean
+					class="org.springframework.security.core.authority.GrantedAuthorityImpl">
+					<constructor-arg value="ROLE_ADMIN" />
+				</bean>
+			</list>
+		</constructor-arg>
+	</bean>
+
+	<!-- Declare an audit logger -->
+	<bean id="auditLogger"
+		class="org.springframework.security.acls.domain.ConsoleAuditLogger" />
+
+
+	<!-- =====================Before Invocation Authz (using ACLs)==================== -->
+
+	<!-- An access decision voter that reads ACL_OBJECT_READ configuration settings -->
+	<bean id="aclObjectReadVoter" class="org.springframework.security.acls.AclEntryVoter">
+		<constructor-arg ref="aclService" />
+		<constructor-arg value="ACL_OBJECT_READ" />
+		<constructor-arg>
+			<list>
+				<ref local="administrationPermission" />
+				<ref local="readPermission" />
+			</list>
+		</constructor-arg>
+		<property name="processDomainObjectClass" value="com.mytestcompany.sst.model.Resource" />
+	</bean>
+
+	<!-- An access decision voter that reads ACL_OBJECT_WRITE configuration 
+		settings -->
+	<bean id="aclObjectWriteVoter" class="org.springframework.security.acls.AclEntryVoter">
+		<constructor-arg ref="aclService" />
+		<constructor-arg value="ACL_OBJECT_WRITE" />
+		<constructor-arg>
+			<list>
+				<ref local="administrationPermission" />
+				<ref local="writePermission" />
+			</list>
+		</constructor-arg>
+		<property name="processDomainObjectClass" value="com.mytestcompany.sst.model.Resource" />
+	</bean>
+
+	<!-- An access decision voter that reads ACL_OBJECT_DELETE configuration 
+		settings -->
+	<bean id="aclObjectDeleteVoter" class="org.springframework.security.acls.AclEntryVoter">
+		<constructor-arg ref="aclService" />
+		<constructor-arg value="ACL_OBJECT_DELETE" />
+		<constructor-arg>
+			<list>
+				<ref local="administrationPermission" />
+				<ref local="deletePermission" />
+			</list>
+		</constructor-arg>
+		<property name="processDomainObjectClass" value="com.mytestcompany.sst.model.Resource" />
+	</bean>
+
+	<!-- An access decision voter that reads ACL_OBJECT_ADMIN configuration 
+		settings -->
+	<bean id="aclObjectAdminVoter" class="org.springframework.security.acls.AclEntryVoter">
+		<constructor-arg ref="aclService" />
+		<constructor-arg value="ACL_OBJECT_ADMIN" />
+		<constructor-arg>
+			<list>
+				<ref local="administrationPermission" />
+			</list>
+		</constructor-arg>
+		<property name="processDomainObjectClass" value="com.mytestcompany.sst.model.Resource" />
+	</bean>
+
+
+	<!-- =====================After Invocation Authz (using ACLs)===================== -->
+
+	<bean id="accessDecisionManager" class="org.springframework.security.access.vote.UnanimousBased">
+		<property name="decisionVoters">
+			<list>
+				<ref local="aclObjectReadVoter" />
+				<ref local="aclObjectWriteVoter" />
+				<ref local="aclObjectDeleteVoter" />
+				<ref local="aclObjectAdminVoter" />
+			</list>
+		</property>
+	</bean>
+
+	<bean id="afterInvocationManager"
+		class="org.springframework.security.access.intercept.AfterInvocationProviderManager">
+		<property name="providers">
+			<list>
+				<ref local="afterAclRead" />
+			</list>
+		</property>
+	</bean>
+
+	<!-- Processes AFTER_ACL_READ configuration settings -->
+	<bean id="afterAclRead"
+		class="org.springframework.security.acls.afterinvocation.AclEntryAfterInvocationProvider">
+		<constructor-arg ref="aclService" />
+		<constructor-arg>
+			<list>
+				<ref local="administrationPermission" />
+				<ref local="readPermission" />
+			</list>
+		</constructor-arg>
+	</bean>
+</beans>
