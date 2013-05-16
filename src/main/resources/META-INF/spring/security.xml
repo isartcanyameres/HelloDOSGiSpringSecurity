@@ -18,7 +18,7 @@
 	<bean id="mySecurityFilterChain" class="org.springframework.security.web.FilterChainProxy">
 		<security:filter-chain-map path-type="ant">
 			<security:filter-chain pattern="/**"
-				filters="securityContextPersistenceFilterWithASCFalse,
+				filters="securityContextPersistenceFilterWithASCFalseSkippingClearContext,
 				basicAuthenticationFilter,
 				exceptionTranslationFilter,
 				filterSecurityInterceptor" />
@@ -39,14 +39,15 @@
 
 	<!-- Define filter beans -->
 
-	<bean id="securityContextPersistenceFilterWithASCFalse"
-		class="org.springframework.security.web.context.SecurityContextPersistenceFilter">
-		<property name='securityContextRepository'>
-			<bean
-				class='org.springframework.security.web.context.HttpSessionSecurityContextRepository'>
-				<property name='allowSessionCreation' value='false' />
-			</bean>
-		</property>
+	<bean id="securityContextPersistenceFilterWithASCFalseSkippingClearContext"
+		class="com.mytestcompany.sst.sec.SecurityContextPersistenceFilterSkipClearContext">
+		<property name="securityContextRepository" ref="httpSessionSecurityContextRepositoryWithASCFalse"/>
+		<property name="skipClearContext" value="true" />
+	</bean>
+	
+	<bean id="httpSessionSecurityContextRepositoryWithASCFalse"
+		class='org.springframework.security.web.context.HttpSessionSecurityContextRepository'>
+		<property name="allowSessionCreation" value="false" />
 	</bean>
 
 	<bean id="basicAuthenticationFilter"
@@ -117,7 +118,7 @@
 		<property name="afterInvocationManager" ref="afterInvocationManager" />
 	</bean>
 	
-	<security:global-method-security
+	<security:global-method-security 
     pre-post-annotations="enabled" 
     secured-annotations="disabled" 
     jsr250-annotations="disabled" 
